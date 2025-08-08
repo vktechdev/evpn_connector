@@ -20,12 +20,12 @@ import logging
 import sys
 
 from oslo_config import cfg
-from evpn_connector.common import log as evpn_log
 
 from evpn_connector.bgp import client as bgp_client
 from evpn_connector.common import conf_opts
 from evpn_connector.common import config
 from evpn_connector.common import constants
+from evpn_connector.common import log as evpn_log
 from evpn_connector.common import metrics
 from evpn_connector.common import sentry
 from evpn_connector.ovs import client as ovs_client
