@@ -1,0 +1,60 @@
+.functional-tests-template:
+  allow_failure: true
+  variables:
+    ALLURE_PATH: "sprut/sprut/tests/functional/allure-results"
+  before_script:
+    - echo "ABORT_LAB_PIPELINE=${ABORT_LAB_PIPELINE:-false}"
+    - |
+      if [ "$ABORT_LAB_PIPELINE" == "true" ] ; then
+        echo "Tests are aborted by previous errors. Force exit!"
+        exit 100500
+      fi
+    - yum install -y iputils
+    - git clone https://$SPRUT_PROJECT_GIT_TOKEN@gitlab.corp.mail.ru/infra/iaas/sprut.git $PROJECT_DIR
+    - echo "TESTS_JOB_URL=${CI_JOB_URL}" >> build.env
+  script:
+    - cd sprut
+    - tox -e devenv_functional_tests -vvv
+        -- --ssh_key="$APERTURE_LAB_CI_KEY"
+        --cluster_project_id=$APERTURE_LAB_PROJECT_ID
+        --cluster_data=${CLUSTER_INFO_FILE}
+    - touch $SUCCESS_FILE
+  after_script:
+    - touch $BUILD_ENV_FILE
+    - >
+      if [ ! -e "$SUCCESS_FILE" ] ; then
+        echo "File $SUCCESS_FILE doesn't exists."
+        echo "$ABORT_LAB_PIPELINE_KEY=true" >> $BUILD_ENV_FILE
+      else
+        echo "File $SUCCESS_FILE exists. Continue lab pipeline!"
+      fi
+    - cp -r $ALLURE_PATH .
+
+.allure:
+  variables:
+    BASE_PAGE_URL: "http://infra.pages.gitlab.corp.mail.ru/-/iaas/iaas-network/evpn-connector"
+    PATH_TO_REPORT: "artifacts/allure-report/index.html"
+  tags:
+    - cc-k8s-${TEAM}
+  image: $DOCKER_REGISTRY_EXTERNAL/allure-python
+  cache:
+    key: cache-history-$CI_COMMIT_REF_SLUG-$TEST_ENV
+    when: always
+    paths:
+      - allure-history/
+  before_script:
+    - bash devops/generate_allure_executor_file.sh
+  script:
+    - mkdir -p allure-history
+    - mv allure-history/ allure-results/history/
+    - allure generate -c allure-results/ -o allure-report/
+    - cp -R allure-report/history allure-history/
+    - REPORT_URL="$BASE_PAGE_URL/-/jobs/$CI_JOB_ID/$PATH_TO_REPORT"
+    - echo "Link to report $REPORT_URL"
+  artifacts:
+    expose_as: allure_report
+    when: always
+    paths:
+      - allure-report/
+      - allure-results/
+    expire_in: 1 week

@@ -1,0 +1,112 @@
+include:
+  - local: .gitlab/ci/templates/devenv.gitlab-ci.yml
+  - local: .gitlab/ci/templates/functional-tests.gitlab-ci.yml
+
+default:
+  image: $TESTENV_IMAGE
+  tags:
+    - cc-k8s-${TEAM}
+
+stages:
+  - devenv-deploy
+  - devenv-wait
+  - devenv-update
+  - devenv-update-sprut
+  - devenv-tests
+  - devenv-tests-report
+  - devenv-destroy
+  - ci-result
+
+devenv:deploy:
+  stage: devenv-deploy
+  extends:
+    - .devenv-variables
+    - .devenv-deploy-template
+    - .abort-aperture-lab-pipeline-template
+
+devenv:wait:
+  stage: devenv-wait
+  needs:
+    - devenv:deploy
+  extends:
+    - .devenv-variables
+    - .devenv-wait-template
+    - .abort-aperture-lab-pipeline-template
+
+devenv:update:
+  stage: devenv-update
+  needs:
+    - devenv:deploy
+    - devenv:wait
+  extends:
+    - .devenv-variables
+    - .devenv-update-template
+    - .abort-aperture-lab-pipeline-template
+
+devenv:update:sprut:
+  stage: devenv-update-sprut
+  needs:
+    - devenv:deploy
+    - devenv:update
+  extends:
+    - .devenv-variables
+    - .devenv-update-sprut-template
+    - .abort-aperture-lab-pipeline-template
+
+devenv:tests:
+  stage: devenv-tests
+  needs:
+    - devenv:deploy
+    - devenv:update
+    - devenv:update:sprut
+  extends:
+    - .devenv-variables
+    - .functional-tests-template
+  artifacts:
+    when: always
+    expose_as: devenv_tests
+    paths:
+      - allure-results
+    expire_in: 1 week
+    reports:
+      dotenv: build.env
+
+devenv:tests:allure:
+  stage: devenv-tests-report
+  extends:
+    - .devenv-variables
+    - .allure
+  variables:
+    TEST_ENV: "prod"
+  needs:
+    - job: devenv:tests
+      artifacts: true
+
+devenv:delete:
+  stage: devenv-destroy
+  needs:
+    - devenv:tests
+  extends:
+    - .devenv-variables
+    - .devenv-delete-template
+    - .abort-aperture-lab-pipeline-template
+
+devenv:delete:manual:
+  stage: devenv-destroy
+  needs:
+    - devenv:deploy
+  extends:
+    - .devenv-variables
+    - .devenv-delete-template
+  when: manual
+
+ci_result:
+  stage: ci-result
+  needs:
+    - devenv:tests
+  extends:
+    - .devenv-variables
+    - .abort-aperture-lab-pipeline-template
+  script:
+    - echo "Check production testing pipeline is passed"
+    - touch $SUCCESS_FILE

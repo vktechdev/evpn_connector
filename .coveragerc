@@ -1,0 +1,30 @@
+[run]
+branch = True
+parallel = True
+omit =
+    .tox/*
+    evpn_connector/tests/*
+    evpn_connector/bgp/generated/*
+source = evpn_connector
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+skip_empty = True
+# fail_under = 90
+
+[html]
+directory = cover
+skip_covered = False
+skip_empty = True
+
+[xml]
+output = cover/coverage.xml

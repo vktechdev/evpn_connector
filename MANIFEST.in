@@ -1,0 +1,9 @@
+include README.md
+include LICENSE
+recursive-exclude evpn_connector/tests *
+
+exclude .gitignore
+
+global-exclude *docker*
+global-exclude *.pyc
+global-exclude *~

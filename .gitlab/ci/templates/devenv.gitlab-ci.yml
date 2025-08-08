@@ -1,0 +1,131 @@
+.devenv-variables-base:
+  variables:
+    APERTURE_LAB_CONF_DIR: "/usr/etc/aperture_lab"
+    APERTURE_LAB_CONF_FILENAME: "aperture_lab.conf"
+    APERTURE_LAB_CONF_FILE: "${APERTURE_LAB_CONF_DIR}/${APERTURE_LAB_CONF_FILENAME}"
+    APERTURE_LAB_PROJECT_ID: "3398b98be61d47518c903c8cdd3dcfe0"
+    ABORT_LAB_PIPELINE_KEY: "ABORT_LAB_PIPELINE"
+    CLUSTER_INFO_FILENAME: "cluster-info.json~"
+    CLUSTER_INFO_FILE: "$CI_PROJECT_DIR/$CLUSTER_INFO_FILENAME"
+    CLUSTER_ID: "${CI_PROJECT_NAME}_${CI_COMMIT_SHORT_SHA}_${CI_PIPELINE_ID}"
+    CLUSTER_IMAGES_VERSION: "latest"
+    CLUSTER_MONITORING_MODE: "service"
+    SUCCESS_FILENAME: "success"
+    SUCCESS_FILE: "$CI_PROJECT_DIR/$SUCCESS_FILENAME"
+    BUILD_ENV_FILENAME: "build.env"
+    BUILD_ENV_FILE: "$CI_PROJECT_DIR/$BUILD_ENV_FILENAME"
+
+
+.devenv-variables:
+  extends:
+    - .devenv-variables-base
+  variables:
+    APERTURE_LAB_CONF: $APERTURE_LAB_CONF_FILE
+    APERTURE_LAB_PROJECT_ID: $APERTURE_LAB_PROJECT_ID
+    DEVENV_USR: $DEVENV_USER
+    DEVENV_PSW: $DEVENV_PASSWORD
+
+
+.devenv-deploy-template:
+  script:
+    - aperture-lab-cluster-build
+        --config-file "$APERTURE_LAB_CONF"
+        --openstack-user-name "$DEVENV_USR"
+        --openstack-password "$DEVENV_PSW"
+        --cloud-builder-cluster-id "$CLUSTER_ID"
+        --cloud-builder-info-file "$CLUSTER_INFO_FILE"
+        --cloud-builder-images-version "$CLUSTER_IMAGES_VERSION"
+        --cloud-builder-monitoring-mode "$CLUSTER_MONITORING_MODE"
+    - touch $SUCCESS_FILE
+  artifacts:
+    paths:
+      - build.env
+      - cluster-info.json~
+    expire_in: 1 week
+
+
+.devenv-wait-template:
+  script:
+    - aperture-lab-cluster-wait
+        --config-file "$APERTURE_LAB_CONF"
+        --cloud-builder-private-key "$APERTURE_LAB_CI_KEY"
+        --cloud-builder-cluster-id "$CLUSTER_ID"
+        --cloud-builder-info-file "$CLUSTER_INFO_FILE"
+    - touch $SUCCESS_FILE
+
+
+.devenv-update-scripts: &devenv-update-scripts
+  - mkdir $APPS_DIR
+  - cp -a $PROJECT_DIR $APPS_DIR
+  - pushd $APPS_PROJECT_DIR
+  - tox -e venv
+  - popd
+  - tar -czf $ARCHIVE_FILE -C $APPS_DIR $PROJECT_NAME
+  - ls -lh $ARCHIVE_FILE
+  - aperture-lab-cluster-update
+      --config-file "$APERTURE_LAB_CONF"
+      --cloud-builder-private-key "$APERTURE_LAB_CI_KEY"
+      --cloud-builder-cluster-id "$CLUSTER_ID"
+      --cloud-builder-info-file "$CLUSTER_INFO_FILE"
+      --cloud-updater-venv-archive "$ARCHIVE_FILE"
+      --cloud-updater-service-name "$PROJECT_NAME"
+  - touch $SUCCESS_FILE
+
+
+.devenv-update-template:
+  variables:
+    APPS_DIR: "/apps"
+    PROJECT_NAME: "$CI_PROJECT_NAME"
+    PROJECT_DIR: "$CI_PROJECT_DIR"
+    APPS_PROJECT_DIR: "$APPS_DIR/$PROJECT_NAME"
+    ARCHIVE_FILENAME: "$PROJECT_NAME.tar.gz"
+    ARCHIVE_FILE: "$CI_PROJECT_DIR/$ARCHIVE_FILENAME"
+  script:
+    - *devenv-update-scripts
+
+
+.devenv-update-sprut-template:
+  variables:
+    APPS_DIR: "/apps"
+    PROJECT_NAME: "sprut"
+    PROJECT_DIR: "/tmp/$PROJECT_NAME"
+    APPS_PROJECT_DIR: "$APPS_DIR/$PROJECT_NAME"
+    ARCHIVE_FILENAME: "$PROJECT_NAME.tar.gz"
+    ARCHIVE_FILE: "/tmp/$ARCHIVE_FILENAME"
+  script:
+    - git clone https://$SPRUT_PROJECT_GIT_TOKEN@gitlab.corp.mail.ru/infra/iaas/sprut.git $PROJECT_DIR
+    - *devenv-update-scripts
+
+
+.devenv-delete-template:
+  script:
+    - aperture-lab-cluster-delete
+        --config-file "$APERTURE_LAB_CONF"
+        --openstack-user-name "$DEVENV_USR"
+        --openstack-password "$DEVENV_PSW"
+        --cloud-builder-cluster-id "$CLUSTER_ID"
+        --cloud-builder-info-file "$CLUSTER_INFO_FILE"
+    - touch $SUCCESS_FILE
+
+
+.abort-aperture-lab-pipeline-template:
+  allow_failure: true
+  before_script:
+    - echo "ABORT_LAB_PIPELINE=${ABORT_LAB_PIPELINE:-false}"
+    - |
+      if [ "$ABORT_LAB_PIPELINE" == "true" ] ; then
+        echo "The lab pipeline is aborted by previous errors. Force exit!"
+        exit 100500
+      fi
+  after_script:
+    - touch $BUILD_ENV_FILE
+    - |
+      if [ ! -e "$SUCCESS_FILE" ] ; then
+        echo "File $SUCCESS_FILE doesn't exists."
+        echo "$ABORT_LAB_PIPELINE_KEY=true" >> $BUILD_ENV_FILE
+      else
+        echo "File $SUCCESS_FILE exists. Continue lab pipeline!"
+      fi
+  artifacts:
+    reports:
+      dotenv: build.env

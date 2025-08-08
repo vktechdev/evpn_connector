@@ -1,0 +1,13 @@
+[Unit]
+Description=Evpn connector Service
+After=network.target
+Requires=gobgpd.service
+
+[Service]
+PIDFile=/var/run/evpn-connector.pid
+User=root
+ExecStart=/usr/bin/evpn-connector --config-file /etc/evpn_connector/evpn_connector.conf
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

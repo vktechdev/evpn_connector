@@ -1,0 +1,6 @@
+hacking>=0.12.0,!=0.13.0,<0.14 # Apache-2.0
+typing-extensions<4.2.0;python_version=='3.6'  # PSF-2.0
+pytest-timer
+pytest==4.6.1
+coverage>=4.0 # Apache-2.0
+mock==3.0.5
