@@ -1,0 +1,17 @@
+.tox/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+cover/
+dist/
+.eggs/
+*.egg-info/
+
+**/charts
+**/tmpcharts
+devops/helm-chart-library/
+tilt_modules/
+
+docs/
+*.jar

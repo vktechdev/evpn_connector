@@ -1,0 +1,39 @@
+[DEFAULT]
+verbose = True
+debug = True
+
+[logging]
+config = logging.yaml
+
+[agent]
+sync_period = 10
+
+[victoria_metrics]
+enabled = False
+host = "127.0.0.1"
+port = 8126
+prefix = "apps.evpn_connector.dev"
+obsender_host = "sprut.compute.i"
+
+[sentry]
+enabled = False
+dsn = "http://01b92236b6514577812280415d631354@192.168.220.220:9000/2"
+traces_sample_rate = 1.0
+env = devenv
+
+[gobgp]
+gobgp_channel = "localhost:50051"
+grpc_timeout_sec = 100
+# Not change this params without gobgp restart
+source_ip = "10.10.10.2"
+as_number = 1
+
+[ovs]
+switch_name = "evpn"
+vxlan_udp_port = 4789
+enable_sudo = True
+ovs_vsctl_bin_path="/usr/bin/ovs-vsctl"
+ovs_ofctl_bin_path="/usr/bin/ovs-ofctl"
+
+[anycast]
+anycast_status_file = /tmp/anycast_status_file

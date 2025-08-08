@@ -1,0 +1,15 @@
+[global.config]
+as =  65100
+router-id = "10.10.10.2"
+local-address-list = [ "10.10.10.2" ]
+
+[[neighbors]]
+  [neighbors.config]
+    peer-as = 65200
+    neighbor-address = "10.10.10.1"
+  [neighbors.ebgp-multihop.config]
+    enabled = true
+    multihop-ttl = 7
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "l2vpn-evpn"

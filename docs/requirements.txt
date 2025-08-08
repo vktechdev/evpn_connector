@@ -1,0 +1,7 @@
+MarkupSafe<2.1.0 # BSD
+wget==3.2 # AS IS, Unlicense
+sphinx>=1.2.1,!=1.3b1,<1.4 # BSD
+sphinxcontrib-plantuml==0.12 # BSD
+Pillow>=2.4.0 # PIL License
+docutils<0.18  # BSD
+oslo-docs-generator>=0.3.4 # Apache-2.0
