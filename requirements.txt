@@ -13,3 +13,4 @@ sentry-sdk==1.5.2;python_version<'3.8' # BSD
 sentry-sdk==1.6.0;python_version>='3.8' # BSD
 loopster>=2.14.4,<3.0.0  # Apache-2.0
 obsender>=5.0.0,<6.0.0  # Apache-2.0
+pyyaml>=6.0 # MIT

@@ -1,0 +1,32 @@
+version: 1
+formatters:
+  aardvark:
+    format: '%(asctime)15s.%(msecs)03d %(processName)s pid:%(process)d tid:%(thread)d %(levelname)s %(name)s:%(lineno)d %(message)s'
+    datefmt: '%Y-%m-%dT%H:%M:%S'
+# this one should only be used by handlers that support topology_id attribute
+# and since it may be used by multiple modules, actual_module attribute
+# should also be added (module will give a short name, pathname is too long)
+
+handlers:
+  console:
+    class : logging.StreamHandler
+    formatter: aardvark
+    stream  : ext://sys.stdout
+
+loggers:
+# by default all existing loggers are disabled upon the application
+# of this config. To re-enable a logger and it's childer just add it
+# to the loggers section with any even empty fields.
+  obsender:
+    handlers: [console]
+    level: WARNING
+    propagate: False
+
+  loopster:
+    level: WARNING
+
+  evpn_connector: {}
+
+root:
+  handlers: [console]
+  level: INFO

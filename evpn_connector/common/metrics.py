@@ -29,7 +29,7 @@ def construct_event_sender(app_name, logger=None, timeout=None):
 
     """
     if timeout is None:
-        timeout = CONF.metrics.obsender_timeout
+        timeout = 2.0
 
     common_kwargs = {
         "app_name": app_name,
