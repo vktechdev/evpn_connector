@@ -29,6 +29,10 @@ if [ -z "$(which ovs-vsctl)" ]; then
     log "Need install openvswitch package" "ERROR"
     exit 1
 fi
+if [ -z "$(which jq)" ]; then
+    log "Need install jq package" "ERROR"
+    exit 1
+fi
 if [[ "$(whoami)" != "root" && ! "$DEBUG" ]]; then
     log "Please run as root" "ERROR"
     exit 1
