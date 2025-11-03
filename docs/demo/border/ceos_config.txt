@@ -1,0 +1,84 @@
+! Command: show running-config
+! device: ceos (cEOSLab, EOS-4.34.3M-44102281.4343M (engineering build))
+!
+no aaa root
+!
+no service interface inactive port-id allocation disabled
+!
+transceiver qsfp default-mode 4x10G
+!
+service routing protocols model multi-agent
+!
+agent PowerManager shutdown
+agent LedPolicy shutdown
+agent Thermostat shutdown
+agent PowerFuse shutdown
+agent StandbyCpld shutdown
+agent LicenseManager shutdown
+!
+hostname ceos
+!
+spanning-tree mode mstp
+!
+system l1
+unsupported speed action error
+unsupported error-correction action error
+!
+vrf instance ext
+rd 1:1
+!
+interface Ethernet12
+no switchport
+ip address 10.20.20.2/24
+!
+interface Ethernet22
+no switchport
+vrf ext
+ip address 10.30.30.2/24
+!
+interface Ethernet510
+!
+interface Loopback0
+ip address 10.40.40.1/32
+!
+interface Vxlan1
+vxlan source-interface Loopback0
+vxlan udp-port 4789
+vxlan vrf ext vni 10
+!
+ip routing
+ip routing vrf ext
+!
+ip route 10.10.10.0/24 10.20.20.1
+ip route vrf ext 0.0.0.0/0 10.30.30.1
+!
+router bgp 65300
+neighbor 10.10.10.1 remote-as 65100
+neighbor 10.10.10.1 ebgp-multihop 7
+neighbor 10.10.10.1 timers min-hold-time 3
+neighbor 10.10.10.1 idle-restart-timer 60
+neighbor 10.10.10.1 send-community extended
+neighbor 10.10.10.2 remote-as 65200
+neighbor 10.10.10.2 ebgp-multihop 7
+neighbor 10.10.10.2 timers min-hold-time 3
+neighbor 10.10.10.2 idle-restart-timer 60
+neighbor 10.10.10.2 send-community extended
+!
+address-family evpn
+neighbor 10.10.10.1 activate
+neighbor 10.10.10.2 activate
+!
+vrf ext
+rd 10.30.30.2:10
+route-target import 65000:10
+route-target export 65000:10
+redistribute static
+!
+router multicast
+ipv4
+software-forwarding kernel
+!
+ipv6
+software-forwarding kernel
+!
+end

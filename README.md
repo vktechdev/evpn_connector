@@ -27,7 +27,7 @@ The details of the EVPN's operation and evpn-connector daemon workflow are descr
 
 ### Prerequisites
 
-*   **Python 3.8
+*   **Python 3.8**
 *   **System Dependencies:**
     *   `gobgp` (for interaction via BGP within the EVPN control plane)
     *   `openvswitch-switch` (for interaction via VXLAN within the EVPN data plane)
@@ -133,5 +133,5 @@ Start the service by specifying the path to your configuration file:
 2.  **Run evpn-connector**
     ```bash
     source evpn/bin/activate
-    evpn-connector --config-file ~/evpn/config/evpn_connector.cfg --daemon-configs_dir "/var/lib/evpn_connector/client_configs/"
+    evpn-connector --config-file /etc/evpn_connector/evpn_connector.conf --daemon-configs_dir "/var/lib/evpn_connector/client_configs/"
     ```

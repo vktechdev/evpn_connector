@@ -6,8 +6,8 @@ Configuring demo env:
     ```
 2. Run virtual machines via virt-manager or qemu:
     ```
-    Hostname: compute1, ip_address: 10.10.10.1
-    Hostname: compute2, ip_address: 10.10.10.2
+    Hostname: compute1, ip_address: 10.10.10.1 on enp1s0
+    Hostname: compute2, ip_address: 10.10.10.2 on enp1s0
     ```
 3. Install packages:
     ```bash
@@ -59,4 +59,11 @@ Configuring demo env:
     ```
 11. Copy configs for all daemons from repo (for each compute host separately):
     ```bash
-    cp -r evpn_connector/docs/source/demo/compute1/* ~/
+    cp -r evpn_connector/docs/demo/compute1/* ~/
+
+12. (Optional) Add routing to work with the border router
+    ```bash
+    ip route add 10.20.20.0/24 via 10.10.10.3
+    ip route add 10.30.30.0/24 via 10.10.10.3
+    ip route add 10.40.40.0/24 via 10.10.10.3
+    ```
