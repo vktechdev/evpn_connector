@@ -16,11 +16,20 @@
 
 import sys
 
+import pytest
+
 from evpn_connector.common import constants
 from evpn_connector.service import objects
 
 
 class TestEvpnConnectorObjects(object):
+    @pytest.fixture(autouse=True)
+    def gbp_off_afterwards(self):
+        # It is process-wide state; leaving it on would build every
+        # later flow in this run as a GBP one.
+        yield
+        objects.set_gbp(False)
+
     def test_ovs_flow(self):
         match1 = "table=1,priority=100"
         match2 = "table=1,priority=200"
@@ -333,3 +342,85 @@ class TestEvpnConnectorObjects(object):
         assert len(vnet_vnis) == len(vnets) == 2
         assert expected_vnets == vnets
         assert expected_vnis == vnet_vnis
+
+    def _gbp_objects(self):
+        ce = objects.ClientEdge(
+            mac="d8:6b:5c:cd:97:ee",
+            vni=1,
+            ip="192.168.1.1",
+            rt=objects.RouteTarget(targets=[(65001, 100)]),
+            as_number=65001,
+            ofport=1,
+            port_type="vxlan",
+            tag=100,
+            next_hop="10.0.0.2",
+        )
+
+        prefix = objects.ClientEdgePrefix(
+            prefix="10.1.1.0",
+            prefix_len=24,
+            mac="d8:6b:5c:cd:97:ee",
+            router_mac="d8:6b:5c:cd:97:ef",
+            vni=1,
+            rt=objects.RouteTarget(targets=[(65001, 100)]),
+            as_number=65001,
+            ofport=1,
+            port_type="vxlan",
+            tag=100,
+            next_hop="10.0.0.2",
+        )
+
+        vnet = objects.VirtNet(
+            vni=1,
+            next_hop="10.0.0.2",
+            rt=objects.RouteTarget(targets=[(65001, 100)]),
+            as_number=65001,
+        )
+        return ce, prefix, vnet
+
+    def test_the_identity_is_carried_only_at_the_tunnel(self):
+        """The identity is put on the wire and taken off it, once each.
+
+        Every path out has to carry it (a guest reached by a /32, or by
+        flooding, is otherwise a hole), and only tunnel ingress may take it
+        off: local traffic never had a header, and reading one would erase
+        its sender's mark.
+        """
+        objects.set_gbp(True)
+        ce, prefix, vnet = self._gbp_objects()
+
+        assert constants.MARK_TO_GBP in ce.ovs_output()
+        assert constants.MARK_TO_GBP in prefix.ovs_output()
+        assert constants.MARK_TO_GBP in vnet.ovs_output()
+
+        # Both flows that a tunnel ingress can hit: the Type 2 one, and
+        # VirtNet's stand-in for a missing Type 2 announce.
+        for obj in (ce, vnet):
+            assert constants.GBP_TO_MARK in obj._ovs_to_out_table_action(
+                local=False
+            )
+            assert constants.GBP_TO_MARK not in obj._ovs_to_out_table_action(
+                local=True
+            )
+
+    def test_no_identity_is_carried_when_gbp_is_off(self):
+        """Off by default means the flows are exactly the ones from before.
+
+        OVS will not mix GBP and non-GBP tunnels on one UDP port, so a
+        fabric that has not asked for this must be left as it was.
+        """
+        objects.set_gbp(False)
+        ce, prefix, vnet = self._gbp_objects()
+
+        for flow in (
+            ce.ovs_output(),
+            prefix.ovs_output(),
+            vnet.ovs_output(),
+            ce._ovs_to_out_table_action(local=False),
+            ce._ovs_to_out_table_action(local=True),
+            vnet._ovs_to_out_table_action(local=False),
+            vnet._ovs_to_out_table_action(local=True),
+        ):
+            assert constants.MARK_TO_GBP not in flow
+            assert constants.GBP_TO_MARK not in flow
+            assert ",," not in flow and not flow.endswith(",")

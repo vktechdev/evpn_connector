@@ -113,6 +113,16 @@ ovs_opts = [
     cfg.StrOpt(
         name="switch_name", required=True, help="OpenvSwitch switch name"
     ),
+    cfg.BoolOpt(
+        name="gbp",
+        default=False,
+        help=(
+            "Carry the sender's group in VXLAN-GBP's Group Policy ID, "
+            "to and from skb mark bits 0..15 (reserved for it); the "
+            "underlay is trusted. Fabric-wide: OVS will not mix GBP and "
+            "non-GBP tunnels on one UDP port."
+        ),
+    ),
     cfg.StrOpt(
         name="tmp_flow_file_path",
         default="/tmp/evpn_tmp_flow_file",

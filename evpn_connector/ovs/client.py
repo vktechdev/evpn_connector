@@ -40,8 +40,10 @@ class OvSClient(object):
         enable_sudo=False,
         ovsvsctl_bin=constants.OVSVSCTL_BIN,
         ovsofctl_bin=constants.OVSOFCTL_BIN,
+        gbp=False,
     ):
         self.vxlan_ofport = vxlan_ofport or constants.VXLAN_PORT_OFPORT
+        self.gbp = gbp
         self.sw_name = sw_name
         self.enable_sudo = enable_sudo
         self.tmp_flow_file_path = tmp_flow_file_path
@@ -87,6 +89,12 @@ class OvSClient(object):
             "options:dst_port={}".format(vxlan_udp_port),
             "ofport_request={}".format(self.vxlan_ofport),
         ]
+        if self.gbp:
+            cmd.append("options:exts=gbp")
+        else:
+            # Unmake an existing GBP tunnel; removing an absent key is
+            # a no-op.
+            cmd += ["--", "remove", "Interface", port_name, "options", "exts"]
         return shell.runsh(command=cmd, enable_sudo=self.enable_sudo)
 
     def sync_flows(self, flows):

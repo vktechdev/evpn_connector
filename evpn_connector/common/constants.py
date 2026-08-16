@@ -51,6 +51,11 @@ LOWEST_ACTION_PRIO = 0
 # Traffic direction in REG1
 REG_FROM_REMOTE = 0
 REG_FROM_LOCAL = 1
+
+# A sender's group: the GBP id on the wire, the low 16 bits of the skb mark on
+# the host (a tunnel field does not survive a patch port).
+GBP_TO_MARK = "move:NXM_NX_TUN_GBP_ID[]->NXM_NX_PKT_MARK[0..15]"
+MARK_TO_GBP = "move:NXM_NX_PKT_MARK[0..15]->NXM_NX_TUN_GBP_ID[]"
 # ECMP Multipath hash algorithm (for details see man 7 ovs-actions: multipath)
 ECMP_HASH_ALGORITHM = "symmetric_l3l4+udp"
 
