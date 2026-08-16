@@ -762,6 +762,44 @@ class BGPClient(object):
         resp = self._extract_response_from_grpc(list_peers_channel)
         return resp
 
+    @staticmethod
+    def _peer_converged(peer, settle_sec):
+        if peer.state.session_state != gobgp_pb2.PeerState.ESTABLISHED:
+            return False
+        if settle_sec:
+            uptime = peer.timers.state.uptime.seconds
+            if not uptime or time.time() - uptime < settle_sec:
+                return False
+        return all(
+            afi_safi.mp_graceful_restart.state.end_of_rib_received
+            for afi_safi in peer.afi_safis
+            if afi_safi.mp_graceful_restart.state.received
+        )
+
+    def count_peers(self, settle_sec=0):
+        """Return (total, converged) counts of configured BGP peers.
+
+        Used by fail-static: a peer that is configured but has not
+        converged means the local RIB does not reflect the true remote
+        topology (e.g. the route reflector is gone), so flows derived
+        from it must not be trusted for deletion.
+
+        Converged is stricter than ESTABLISHED, which only says the
+        session is up: the peer streams its table afterwards, and a RIB
+        read in that window is not the fabric yet. End-of-RIB (RFC 4724)
+        is the signal that it is over, reported per family but only
+        where the graceful-restart capability was negotiated. Without it
+        there is nothing to wait for but settle_sec, which also covers a
+        session that came up too recently to be trusted.
+        """
+        peers = self.list_peer("")
+        if not peers:
+            return 0, 0
+        converged = sum(
+            1 for resp in peers if self._peer_converged(resp.peer, settle_sec)
+        )
+        return len(peers), converged
+
     def reset_peer(self, address, soft, direction):
         self.stub.ResetPeer(
             gobgp_pb2.ResetPeerRequest(

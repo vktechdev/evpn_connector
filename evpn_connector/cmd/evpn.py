@@ -87,6 +87,8 @@ def main():
         vxlan_udp_port=CONF.ovs.vxlan_udp_port,
         as_number=CONF.gobgp.as_number,
         policy_enabled=CONF.gobgp.policy_enabled,
+        fail_static=CONF.gobgp.fail_static,
+        fail_static_min_peers=CONF.gobgp.fail_static_min_peers,
         configs_dir=CONF.daemon.configs_dir,
         router_mac_type5=CONF.gobgp.router_mac_type5,
         anycast_status_file=CONF.anycast.anycast_status_file,

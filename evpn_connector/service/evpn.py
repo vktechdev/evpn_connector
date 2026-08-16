@@ -31,6 +31,8 @@ from evpn_connector.service import objects as evpnobj
 
 LOG = logging.getLogger(__name__)
 COMMON_NAME = "local-vni-"
+# Steps a session must outlive when nothing reports End-of-RIB.
+PEER_SETTLE_STEPS = 2
 
 
 def _rewrite_cfg_prefix(cfg, prefix):
@@ -77,6 +79,8 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
         event_type=None,
         error_event_type=None,
         policy_enabled=True,
+        fail_static=False,
+        fail_static_min_peers=0,
     ):
         super(EvpnConnectorService, self).__init__(
             step_period=step_period,
@@ -100,15 +104,39 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
         self.anycast_check_ofport = anycast_check_ofport
         self.anycast_check_mac = anycast_check_mac
         self.anycast_used = False
+        # Fail-static: the last flow set synced while enough peers had
+        # converged, retained if one is later lost.
+        self.fail_static = fail_static
+        self.fail_static_min_peers = fail_static_min_peers
+        self._peer_settle_sec = PEER_SETTLE_STEPS * step_period
+        self._last_good_flows = set()
+        self._peers_healthy = True
+        self._no_peers_since = None
 
     def _setup(self):
         super(EvpnConnectorService, self)._setup()
+        if self.fail_static:
+            # Otherwise a restart during an outage syncs the degraded RIB.
+            self._last_good_flows = self._read_synced_flows()
         LOG.info("Create if not exist ovs switch and vxlan port")
         self.ovs_client.create_bridge()
         self.ovs_client.create_tun_port(
             vxlan_source_ip=self.source_ip, vxlan_udp_port=self.vxlan_udp_port
         )
         self.update_peer(force=True)
+
+    def _read_synced_flows(self):
+        try:
+            with open(self.ovs_client.tmp_flow_file_path) as flow_file:
+                lines = flow_file.read().splitlines()
+        except OSError:
+            return set()
+        flows = set()
+        for line in lines:
+            match, _, action = line.partition(" ")
+            if match:
+                flows.add(evpnobj.OvsFlow(match, action))
+        return flows
 
     @staticmethod
     def _rt2lst(rt_list, local_asn=None):
@@ -342,6 +370,86 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
             )
         self.need_reset_peers = False
 
+    def _log_peer_health(self, healthy, reason):
+        # Checked every step, so only a change of state is worth a line.
+        if healthy == self._peers_healthy:
+            return
+        self._peers_healthy = healthy
+        if healthy:
+            LOG.info("BGP peers healthy again: %s", reason)
+        else:
+            LOG.warning(
+                "BGP peers degraded (%s); holding last-known flows "
+                "(fail-static)",
+                reason,
+            )
+
+    def _upstream_peers_healthy(self):
+        """Whether the RIB can be trusted for flow deletion.
+
+        At least fail_static_min_peers (0: all) configured peers must
+        have converged, i.e. sent their table (see count_peers). No
+        peers is degraded for the settle period (a restarted gobgp),
+        then authoritative. An unreadable peer list is raised: the step
+        stops and the flows stay as they are.
+        """
+        total, converged = self.gobgp_client.count_peers(self._peer_settle_sec)
+        if total == 0:
+            now = time.time()
+            if self._no_peers_since is None:
+                self._no_peers_since = now
+            if now - self._no_peers_since >= self._peer_settle_sec:
+                self._log_peer_health(True, "no peers are configured")
+                return True
+            self._log_peer_health(False, "no peers are configured yet")
+            return False
+        self._no_peers_since = None
+        # More required than configured means all of them.
+        required = min(self.fail_static_min_peers or total, total)
+        if converged < required:
+            self._log_peer_health(
+                False,
+                "only %d of %d peers converged, %d required"
+                % (converged, total, required),
+            )
+            return False
+        self._log_peer_health(
+            True, "%d of %d peers converged" % (converged, total)
+        )
+        return True
+
+    def _apply_fail_static(self, target_flows, metrics, peers_were_healthy):
+        """Decide which flows to sync, retaining flows on peer loss.
+
+        With enough peers converged the computed set is applied and
+        snapshotted; otherwise it is unioned with the snapshot, so
+        routes of a lost session are not deleted until it returns.
+        Health is sampled before the RIB read (peers_were_healthy) and
+        here, and both must hold: a session changing mid-step leaves a
+        RIB matching neither state. The union keeps the fresh side of
+        an equal match, so additions and changes land; deletions wait,
+        and a reused ofport meanwhile gets the stale flow.
+        """
+        if not self.fail_static or (
+            peers_were_healthy and self._upstream_peers_healthy()
+        ):
+            self._last_good_flows = target_flows
+            metrics["fail_static_active"] = 0
+            metrics["fail_static_retained_cnt"] = 0
+            return target_flows
+
+        flows_to_sync = target_flows.union(self._last_good_flows)
+        metrics["fail_static_active"] = 1
+        metrics["fail_static_retained_cnt"] = len(flows_to_sync) - len(
+            target_flows
+        )
+        LOG.debug(
+            "Fail-static active: retaining %d flows on top of %d computed",
+            metrics["fail_static_retained_cnt"],
+            len(target_flows),
+        )
+        return flows_to_sync
+
     def get_anycast_status(self):
         if not os.path.isfile(self.anycast_status_file):
             LOG.warning(
@@ -433,6 +541,10 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
                 "Updating policy done for %0.4f sec",
                 duration_metrics["update_policy_time"],
             )
+
+        peers_were_healthy = (
+            not self.fail_static or self._upstream_peers_healthy()
+        )
 
         LOG.debug("Start getting announces from gobgp")
         start_time = time.time()
@@ -575,9 +687,15 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
             duration_metrics["prep_ovs_time"],
         )
 
+        uni_flows = uni_flows.union(bum_flows)
+
+        flows_to_sync = self._apply_fail_static(
+            uni_flows, metrics, peers_were_healthy
+        )
+
         start_time = time.time()
         LOG.debug("Sync flows in ovs")
-        self.ovs_client.sync_flows(uni_flows.union(bum_flows))
+        self.ovs_client.sync_flows(flows_to_sync)
         duration_metrics["sync_ovs_time"] = time.time() - start_time
         LOG.info(
             "Sync ovs flows done for %0.4f sec",
