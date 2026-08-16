@@ -87,6 +87,26 @@ gobgp_opts = [
         default=constants.TYPE_5_DEFAULT_ROUTER_MAC_EXTENDED,
         help="Value of RouterMacExtended Ext Communities Attr for Type5",
     ),
+    cfg.BoolOpt(
+        name="fail_static",
+        default=False,
+        help=(
+            "Retain the last-known-good OVS flows while too few BGP "
+            "peers have converged (e.g. the route reflector is lost), "
+            "instead of deleting flows of routes gone from the RIB. "
+            "Additions and changes still land; deletions wait."
+        ),
+    ),
+    cfg.IntOpt(
+        name="fail_static_min_peers",
+        default=0,
+        min=0,
+        help=(
+            "Converged BGP peers (established, table received) needed "
+            "to trust the RIB for flow deletion. 0 or more than "
+            "configured means all; 1 suits redundant route reflectors."
+        ),
+    ),
 ]
 
 ovs_opts = [
