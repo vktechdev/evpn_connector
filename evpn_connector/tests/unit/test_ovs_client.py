@@ -88,9 +88,58 @@ class TestOvSClient(object):
                 'options:local_ip="%s"' % local_ip,
                 "options:dst_port=%d" % vxlan_udp_port,
                 "ofport_request=%s" % vxlan_ofport,
+                "--",
+                "remove",
+                "Interface",
+                "vxlan_out",
+                "options",
+                "exts",
             ],
             enable_sudo=False,
         )
+
+    def test_create_tun_port_with_gbp(self, mock_shell_run):
+        """With gbp on, the tunnel gains the extension and nothing else.
+
+        OVS will not mix GBP and non-GBP tunnels on one UDP port, so this is
+        a property of a whole fabric, which is why it is opt-in.
+        """
+        ovs_client = client.OvSClient(
+            "test_sw", "/tmp/flows.txt", vxlan_ofport=10, gbp=True
+        )
+
+        ovs_client.create_tun_port(
+            vxlan_source_ip="1.2.3.4", vxlan_udp_port=3423
+        )
+
+        command = mock_shell_run.call_args[1]["command"]
+        assert "options:exts=gbp" in command
+        assert "remove" not in command
+
+    def test_create_tun_port_without_gbp_unmakes_it(self, mock_shell_run):
+        """An existing tunnel is taken back, or the flag is one-way.
+
+        The port outlives the daemon: --may-exist means turning gbp off
+        would otherwise leave a GBP tunnel behind forever.
+        """
+        ovs_client = client.OvSClient(
+            "test_sw", "/tmp/flows.txt", vxlan_ofport=10, gbp=False
+        )
+
+        ovs_client.create_tun_port(
+            vxlan_source_ip="1.2.3.4", vxlan_udp_port=3423
+        )
+
+        command = mock_shell_run.call_args[1]["command"]
+        assert "options:exts=gbp" not in command
+        assert command[-6:] == [
+            "--",
+            "remove",
+            "Interface",
+            "vxlan_out",
+            "options",
+            "exts",
+        ]
 
     def test_sync_flows(self, mock_shell_run):
         file_name = "/tmp/flows.txt"

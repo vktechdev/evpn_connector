@@ -27,6 +27,19 @@ from evpn_connector.ovs import common as ovs_cm
 
 LOG = logging.getLogger(__name__)
 
+# Whether the fabric carries a sender's group: switch-wide, set at start-up.
+_GBP_ENABLED = False
+
+
+def set_gbp(enabled):
+    global _GBP_ENABLED
+    _GBP_ENABLED = enabled
+
+
+def _gbp(action):
+    """The GBP move with its separator, or nothing when gbp is off."""
+    return "%s," % action if _GBP_ENABLED else ""
+
 
 class BaseObj(object):
     def __init__(self):
@@ -296,6 +309,9 @@ class ClientEdge(BaseVniObjWithOfport):
         reg1_value = constants.REG_FROM_REMOTE
         if local:
             reg1_value = constants.REG_FROM_LOCAL
+        elif self.port_type == constants.EVPN_EDGE_TYPE_VXLAN:
+            # Off the wire on the switched path.
+            res += _gbp(constants.GBP_TO_MARK)
 
         res += "set_field:%d->reg0,set_field:%d->reg1,resubmit(,%d)" % (
             self.vni,
@@ -316,7 +332,9 @@ class ClientEdge(BaseVniObjWithOfport):
                 self.ofport,
             )
         elif self.port_type == constants.EVPN_EDGE_TYPE_VXLAN:
-            res += "set_field:%s->tun_id,set_field:%s->tun_dst,output:%d" % (
+            # Onto the wire.
+            res += "%sset_field:%s->tun_id,set_field:%s->tun_dst,output:%d" % (
+                _gbp(constants.MARK_TO_GBP),
                 self.tun_id,
                 self.next_hop,
                 self.ofport,
@@ -519,7 +537,9 @@ class ClientEdgePrefix(BaseVniObjWithOfport):
                 self.ofport,
             )
         elif self.port_type == constants.EVPN_EDGE_TYPE_VXLAN:
-            res += "set_field:%s->tun_id,set_field:%s->tun_dst,output:%d" % (
+            # Onto the wire.
+            res += "%sset_field:%s->tun_id,set_field:%s->tun_dst,output:%d" % (
+                _gbp(constants.MARK_TO_GBP),
                 self.tun_id,
                 self.next_hop,
                 self.ofport,
@@ -1058,7 +1078,9 @@ class VRF(BaseObj):
 
     @property
     def _ovs_to_out_table_action(self):
-        return "action=set_field:%d->reg2,resubmit(,%d)" % (
+        # Off the wire on the routed path.
+        return "action=%sset_field:%d->reg2,resubmit(,%d)" % (
+            _gbp(constants.GBP_TO_MARK),
             self.vrf_number,
             constants.OUTPUT_TABLE_NUM,
         )
@@ -1152,6 +1174,10 @@ class VirtNet(BaseVniObj):
         reg1_value = constants.REG_FROM_REMOTE
         if local:
             reg1_value = constants.REG_FROM_LOCAL
+        else:
+            # Off the wire, only on tunnel ingress: local traffic has no
+            # header, and reading one would erase its sender's mark.
+            res += _gbp(constants.GBP_TO_MARK)
 
         res += "set_field:%d->reg0,set_field:%d->reg1,resubmit(,%d)" % (
             self.vni,
@@ -1164,7 +1190,9 @@ class VirtNet(BaseVniObj):
     def ovs_output(
         self, for_group=False, tun_ofport=constants.VXLAN_PORT_OFPORT
     ):
-        return "set_field:%s->tun_id,set_field:%s->tun_dst,output:%d" % (
+        # The flooded path carries it too.
+        return "%sset_field:%s->tun_id,set_field:%s->tun_dst,output:%d" % (
+            _gbp(constants.MARK_TO_GBP),
             self.tun_id,
             self.next_hop,
             tun_ofport,
