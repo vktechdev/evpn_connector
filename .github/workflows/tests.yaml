@@ -24,9 +24,13 @@ jobs:
   tests:
     runs-on: ubuntu-24.04
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        python-version: ["3.8"]
+        include:
+          - python-version: "3.8"
+            toxenv: py38
+          - python-version: "3.14"
+            toxenv: py314
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v5
@@ -40,7 +44,5 @@ jobs:
         run: pip install tox
       - name: Unit tests
         run: |
-          tox -e ${{ matrix.python-version }}
-      # - name: Functional tests
-      #   run: |
-      #     tox -e ${{ matrix.python-version }}-functional
+          tox -e ${{ matrix.toxenv }}
+

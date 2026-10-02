@@ -87,11 +87,41 @@ gobgp_opts = [
         default=constants.TYPE_5_DEFAULT_ROUTER_MAC_EXTENDED,
         help="Value of RouterMacExtended Ext Communities Attr for Type5",
     ),
+    cfg.BoolOpt(
+        name="fail_static",
+        default=False,
+        help=(
+            "Retain the last-known-good OVS flows while too few BGP "
+            "peers have converged (e.g. the route reflector is lost), "
+            "instead of deleting flows of routes gone from the RIB. "
+            "Additions and changes still land; deletions wait."
+        ),
+    ),
+    cfg.IntOpt(
+        name="fail_static_min_peers",
+        default=0,
+        min=0,
+        help=(
+            "Converged BGP peers (established, table received) needed "
+            "to trust the RIB for flow deletion. 0 or more than "
+            "configured means all; 1 suits redundant route reflectors."
+        ),
+    ),
 ]
 
 ovs_opts = [
     cfg.StrOpt(
         name="switch_name", required=True, help="OpenvSwitch switch name"
+    ),
+    cfg.BoolOpt(
+        name="gbp",
+        default=False,
+        help=(
+            "Carry the sender's group in VXLAN-GBP's Group Policy ID, "
+            "to and from skb mark bits 0..15 (reserved for it); the "
+            "underlay is trusted. Fabric-wide: OVS will not mix GBP and "
+            "non-GBP tunnels on one UDP port."
+        ),
     ),
     cfg.StrOpt(
         name="tmp_flow_file_path",

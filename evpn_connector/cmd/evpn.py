@@ -30,6 +30,7 @@ from evpn_connector.common import metrics
 from evpn_connector.common import sentry
 from evpn_connector.ovs import client as ovs_client
 from evpn_connector.service import evpn
+from evpn_connector.service import objects as evpnobj
 
 
 OBSENDER_APP_NAME = constants.GLOBAL_SERVICE_NAME
@@ -70,6 +71,9 @@ def main():
         router_mac_type5=CONF.gobgp.router_mac_type5,
     )
 
+    # Read once, so the tunnel and the flows cannot disagree.
+    evpnobj.set_gbp(CONF.ovs.gbp)
+
     # Init ovs client
     shell_ovs_client = ovs_client.OvSClient(
         sw_name=CONF.ovs.switch_name,
@@ -77,6 +81,7 @@ def main():
         enable_sudo=CONF.ovs.enable_sudo,
         ovsvsctl_bin=CONF.ovs.ovs_vsctl_bin_path,
         ovsofctl_bin=CONF.ovs.ovs_ofctl_bin_path,
+        gbp=CONF.ovs.gbp,
     )
 
     # Start service
@@ -87,6 +92,8 @@ def main():
         vxlan_udp_port=CONF.ovs.vxlan_udp_port,
         as_number=CONF.gobgp.as_number,
         policy_enabled=CONF.gobgp.policy_enabled,
+        fail_static=CONF.gobgp.fail_static,
+        fail_static_min_peers=CONF.gobgp.fail_static_min_peers,
         configs_dir=CONF.daemon.configs_dir,
         router_mac_type5=CONF.gobgp.router_mac_type5,
         anycast_status_file=CONF.anycast.anycast_status_file,
