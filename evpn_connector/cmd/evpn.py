@@ -94,6 +94,7 @@ def main():
         policy_enabled=CONF.gobgp.policy_enabled,
         fail_static=CONF.gobgp.fail_static,
         fail_static_min_peers=CONF.gobgp.fail_static_min_peers,
+        restrict_tunnel_sources=CONF.ovs.restrict_tunnel_sources,
         configs_dir=CONF.daemon.configs_dir,
         router_mac_type5=CONF.gobgp.router_mac_type5,
         anycast_status_file=CONF.anycast.anycast_status_file,

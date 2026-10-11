@@ -29,6 +29,7 @@ source_ip = "10.10.10.2"
 as_number = 1
 
 [ovs]
+restrict_tunnel_sources = False
 switch_name = "evpn"
 vxlan_udp_port = 4789
 enable_sudo = True

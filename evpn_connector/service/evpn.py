@@ -28,7 +28,6 @@ from evpn_connector.common import constants
 from evpn_connector.common.services import softirq
 from evpn_connector.service import objects as evpnobj
 
-
 LOG = logging.getLogger(__name__)
 COMMON_NAME = "local-vni-"
 # Steps a session must outlive when nothing reports End-of-RIB.
@@ -81,6 +80,7 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
         policy_enabled=True,
         fail_static=False,
         fail_static_min_peers=0,
+        restrict_tunnel_sources=False,
     ):
         super(EvpnConnectorService, self).__init__(
             step_period=step_period,
@@ -108,6 +108,7 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
         # converged, retained if one is later lost.
         self.fail_static = fail_static
         self.fail_static_min_peers = fail_static_min_peers
+        self.restrict_tunnel_sources = restrict_tunnel_sources
         self._peer_settle_sec = PEER_SETTLE_STEPS * step_period
         self._last_good_flows = set()
         self._peers_healthy = True
@@ -439,6 +440,10 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
             return target_flows
 
         flows_to_sync = target_flows.union(self._last_good_flows)
+        if self.restrict_tunnel_sources:
+            flows_to_sync = evpnobj.restrict_tunnel_sources(
+                flows_to_sync, set()
+            )
         metrics["fail_static_active"] = 1
         metrics["fail_static_retained_cnt"] = len(flows_to_sync) - len(
             target_flows
@@ -680,7 +685,6 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
             len(uni_flows),
             len(bum_flows),
         )
-        metrics["ovs_flow_cnt"] = len(uni_flows) + len(bum_flows)
         duration_metrics["prep_ovs_time"] = time.time() - start_time
         LOG.info(
             "Prepare ovs flows done for %0.4f sec",
@@ -688,10 +692,14 @@ class EvpnConnectorService(softirq.SoftIrqServiceMetrics):
         )
 
         uni_flows = uni_flows.union(bum_flows)
+        if self.restrict_tunnel_sources:
+            sources = self.gobgp_client.vtep_addresses - {self.source_ip}
+            uni_flows = evpnobj.restrict_tunnel_sources(uni_flows, sources)
 
         flows_to_sync = self._apply_fail_static(
             uni_flows, metrics, peers_were_healthy
         )
+        metrics["ovs_flow_cnt"] = len(flows_to_sync)
 
         start_time = time.time()
         LOG.debug("Sync flows in ovs")

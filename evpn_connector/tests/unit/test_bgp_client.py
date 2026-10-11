@@ -15,9 +15,11 @@
 #    under the License.
 
 import mock
+import pytest
 
 from evpn_connector.bgp import client
 from evpn_connector.bgp.generated import gobgp_pb2
+from evpn_connector.common import constants
 from evpn_connector.service import objects
 
 
@@ -231,3 +233,63 @@ class TestCountPeers(object):
         peer = self._peer(uptime=0)
         with mock.patch("time.time", return_value=1005):
             assert self._count([peer], settle_sec=10) == (1, 0)
+
+
+class TestVtepSources(object):
+    @pytest.mark.parametrize(
+        "route_type",
+        [
+            constants.EVPN_MACADV_TYPE,
+            constants.EVPN_MULTICAST_TYPE,
+            constants.EVPN_PREFIX_TYPE,
+        ],
+    )
+    def test_all_paths_supply_vtep_sources(self, route_type):
+        bgp = client.BGPClient("127.0.0.1:50051", 1, "02:00:00:00:00:01")
+        common = dict(
+            vni=10000,
+            as_number=65001,
+            next_hop="10.10.10.2",
+            rt=objects.RouteTarget([(65001, 10000)]),
+        )
+        if route_type == constants.EVPN_MULTICAST_TYPE:
+            route = objects.VirtNet(**common)
+            prepare = bgp.prepare_multicast_path
+        else:
+            common.update(
+                mac="02:00:00:00:00:02", ofport=65278, port_type="vxlan", tag=0
+            )
+            if route_type == constants.EVPN_MACADV_TYPE:
+                route = objects.ClientEdge(ip="10.100.0.1", **common)
+                prepare = bgp.prepare_unicast_path
+            else:
+                route = objects.ClientEdgePrefix(
+                    prefix="10.100.0.1",
+                    prefix_len=32,
+                    router_mac="02:00:00:00:00:03",
+                    **common,
+                )
+                prepare = bgp.prepare_prefix_path
+        first = prepare(route)
+        route.next_hop = "10.10.10.3"
+        second = prepare(route)
+        destination = gobgp_pb2.Destination(paths=[first, second])
+        response = gobgp_pb2.ListPathResponse(destination=destination)
+        bgp._get_paths_from_gobgp = mock.Mock(
+            side_effect=(
+                lambda prefix_type: (
+                    [response] if prefix_type == route_type else []
+                )
+            )
+        )
+        bgp.get_paths(local_next_hop="10.10.10.1")
+        assert bgp.vtep_addresses == {"10.10.10.2", "10.10.10.3"}
+        route.next_hop = "10.10.10.4"
+        destination.ClearField("paths")
+        destination.paths.add().CopyFrom(prepare(route))
+        response.destination.CopyFrom(destination)
+        bgp.get_paths(local_next_hop="10.10.10.1")
+        assert bgp.vtep_addresses == {"10.10.10.4"}
+        bgp._get_paths_from_gobgp = mock.Mock(return_value=[])
+        bgp.get_paths(local_next_hop="10.10.10.1")
+        assert not bgp.vtep_addresses

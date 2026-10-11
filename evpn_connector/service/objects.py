@@ -24,7 +24,6 @@ from evpn_connector.bgp.generated import gobgp_pb2
 from evpn_connector.common import constants
 from evpn_connector.ovs import common as ovs_cm
 
-
 LOG = logging.getLogger(__name__)
 
 # Whether the fabric carries a sender's group: switch-wide, set at start-up.
@@ -151,7 +150,6 @@ class BaseVniObjWithOfport(BaseVniObj):
         if self.port_type == constants.EVPN_EDGE_TYPE_VLAN:
             res += "in_port=%d,dl_vlan=%d" % (ofport, self.tag)
         elif self.port_type == constants.EVPN_EDGE_TYPE_VXLAN:
-            # TODO(aleks.popov): May be add remote ip filter?
             res += "in_port=%d,tun_id=%d" % (ofport, self.vni)
         # Type: flat
         else:
@@ -218,6 +216,47 @@ class OvsFlow(BaseObj):
             return self._match < other._match
         else:
             return NotImplemented
+
+
+def restrict_tunnel_sources(flows, sources):
+    table = constants.TUNNEL_CLASSIFY_TABLE_NUM
+    restricted = {OvsDropFlow(table)}
+    sources = set(sources)
+    tunnel_port = "in_port=%d" % constants.VXLAN_PORT_OFPORT
+    gate_action = "resubmit(,%d)" % table
+    for flow in flows:
+        fields = flow.match.split(",")
+        if "table=0" not in fields or tunnel_port not in fields:
+            restricted.add(flow)
+            continue
+        source_fields = {
+            field
+            for field in fields
+            if field.startswith(("tun_src=", "tun_ipv6_src="))
+        }
+        sources.update(field.split("=", 1)[1] for field in source_fields)
+        if flow.action.split("=", 1)[1] == gate_action:
+            continue
+        restricted.add(
+            OvsFlow(
+                match=",".join(
+                    "table=%d" % table if field == "table=0" else field
+                    for field in fields
+                    if field not in source_fields
+                ),
+                action=flow.action,
+            )
+        )
+    for source in sources:
+        field = "tun_ipv6_src" if ":" in source else "tun_src"
+        restricted.add(
+            OvsFlow(
+                match="table=0,priority=%d,%s,%s=%s"
+                % (constants.NORMAL_PRIO, tunnel_port, field, source),
+                action="actions=" + gate_action,
+            )
+        )
+    return restricted
 
 
 class OvsDropFlow(OvsFlow):

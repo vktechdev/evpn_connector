@@ -287,6 +287,7 @@ class BGPClient(object):
         self._router_mac_type5 = router_mac_type5
         self.gobgp_channel = gobgp_channel
         self.timeout_seconds = grpc_timeout_sec
+        self.vtep_addresses = set()
         self.bgp_origin = Any()
         self.bgp_origin.Pack(attribute_pb2.OriginAttribute(origin=BGP_ORIGIN))
 
@@ -592,6 +593,7 @@ class BGPClient(object):
 
     def _get_paths(self):
         """Get paths from GoBGP"""
+        self.vtep_addresses.clear()
         return (
             self._get_obj(constants.EVPN_MACADV_TYPE),
             self._get_obj(constants.EVPN_MULTICAST_TYPE),
@@ -604,6 +606,12 @@ class BGPClient(object):
         req = self._get_paths_from_gobgp(prefix_type=prefix_type)
         start_time = time.time()
         for line in req:
+            for path in line.destination.paths:
+                for attribute in path.pattrs:
+                    if attribute.type_url == MPREACHNLRI_TYPE_NAME:
+                        self.vtep_addresses.update(
+                            unpack_protobuf_message(attribute).next_hops
+                        )
             simplify_func = self.simplify_map[prefix_type]
             func_res = simplify_func(line.destination)
             if type(func_res) is list:

@@ -110,6 +110,14 @@ gobgp_opts = [
 ]
 
 ovs_opts = [
+    cfg.BoolOpt(
+        name="restrict_tunnel_sources",
+        default=False,
+        help=(
+            "Accept VXLAN ingress only from next-hop addresses learned "
+            "in EVPN Type 2, 3 and 5 routes. Requires trusted EVPN routes."
+        ),
+    ),
     cfg.StrOpt(
         name="switch_name", required=True, help="OpenvSwitch switch name"
     ),

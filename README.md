@@ -20,6 +20,19 @@ A service for automating the management distributed switch or router based on EV
 *   **Reconciliation Loop Design:** Built on a closed-loop control architecture to ensure fault tolerance and reduce the impact of external factors
 *   **Configurability:** Flexible setup via INI daemon configuration files and JSON clients configuration files
 
+Set `[ovs] restrict_tunnel_sources = True` to accept VXLAN ingress only
+from source addresses learned as next hops in EVPN
+Type 2, 3 and 5 routes. The connector updates this set automatically and
+retains the source admission rules during a control-plane outage with fail-static
+enabled. BGP peer addresses, including route reflectors, are not added merely
+because they are peers. This relies on trusted EVPN announcements; it does
+not authenticate the sender or prevent underlay source address spoofing.
+The option defaults to `False`, preserving unrestricted tunnel source
+admission for existing installations. When enabled, table 0 admits each VTEP
+once and table 3 classifies VNIs without duplicating their rules per VTEP.
+Legacy snapshot classifiers are moved behind this source check; qualified
+snapshot rules also restore their permitted sources.
+
 ## Documentation
 The details of the EVPN's operation and evpn-connector daemon workflow are described in the [presentation](https://vkvideo.ru/video-164978780_456239752) (in Russian only).
 
